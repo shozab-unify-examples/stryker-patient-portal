@@ -1,0 +1,135 @@
+apiVersion: automation.cloudbees.io/v1alpha1
+kind: workflow
+name: Patient Portal CI
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  secrets-scan:
+    steps:
+      - name: Checkout
+        uses: cloudbees-io/checkout@v1
+      - name: Secrets Detection
+        uses: cloudbees-io/trufflehog-secret-scan-code@v1
+        with:
+          image-tag: v3
+
+  sast-scan:
+    needs:
+      - secrets-scan
+    steps:
+      - name: Checkout
+        uses: cloudbees-io/checkout@v1
+      - name: SAST Scan
+        uses: cloudbees-io/sonarqube-bundled-sast-scan-code@v2
+        with:
+          language: javascript
+
+  sca-scan:
+    needs:
+      - secrets-scan
+    steps:
+      - name: Checkout
+        uses: cloudbees-io/checkout@v1
+      - name: SCA — Dependency Vulnerability Scan
+        uses: cloudbees-io/snyk-sca-scan-dependency@v1
+        with:
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+          language: javascript
+
+  build:
+    needs:
+      - sast-scan
+      - sca-scan
+    steps:
+      - name: Checkout
+        uses: cloudbees-io/checkout@v1
+      - name: Build application
+        uses: docker://node:20-alpine
+        run: |
+          npm ci --prefer-offline || npm install
+          echo "Build complete — patient-portal v1.0.${{ cloudbees.run_number }}"
+      - name: Register build artifact
+        uses: cloudbees-io/register-build-artifact@v2
+        with:
+          name: patient-portal
+          version: 1.0.${{ cloudbees.run_number }}
+          url: https://github.com/cloudbees-days/stryker-patient-portal
+      - name: Publish build evidence
+        uses: cloudbees-io/publish-evidence-item@v1
+        with:
+          content: |
+            ## Patient Portal Build
+            - **Version**: 1.0.${{ cloudbees.run_number }}
+            - **Branch**: ${{ cloudbees.scm.branch }}
+            - **Commit**: ${{ cloudbees.scm.sha }}
+            - **Classification**: HIGH criticality | patient-data | regulated | external-facing
+          format: MARKDOWN
+
+  deploy-dev:
+    needs:
+      - build
+    environment: patient-portal-dev
+    steps:
+      - name: Deploy to Dev
+        uses: docker://alpine:3.19
+        run: |
+          echo "Deploying patient-portal v1.0.${{ cloudbees.run_number }} to DEV"
+          echo "Target: patient-portal-dev.stryker-internal.io"
+          echo "Platform: non-OSEP | Business Unit: Digital Health"
+      - name: Register deployed artifact
+        uses: cloudbees-io/register-deployed-artifact@v2
+        with:
+          name: patient-portal
+          version: 1.0.${{ cloudbees.run_number }}
+          environment-name: patient-portal-dev
+          url: https://github.com/cloudbees-days/stryker-patient-portal
+      - name: Publish deploy evidence
+        uses: cloudbees-io/publish-evidence-item@v1
+        with:
+          content: |
+            ## Deployed to DEV
+            - **Environment**: patient-portal-dev
+            - **Version**: 1.0.${{ cloudbees.run_number }}
+            - **Status**: SUCCESS
+          format: MARKDOWN
+
+  deploy-staging:
+    needs:
+      - deploy-dev
+    environment: patient-portal-staging
+    steps:
+      - name: Deploy to Staging
+        uses: docker://alpine:3.19
+        run: |
+          echo "Deploying patient-portal v1.0.${{ cloudbees.run_number }} to STAGING"
+          echo "Target: patient-portal-staging.stryker-internal.io"
+      - name: Register deployed artifact
+        uses: cloudbees-io/register-deployed-artifact@v2
+        with:
+          name: patient-portal
+          version: 1.0.${{ cloudbees.run_number }}
+          environment-name: patient-portal-staging
+          url: https://github.com/cloudbees-days/stryker-patient-portal
+
+  deploy-prod:
+    needs:
+      - deploy-staging
+    environment: patient-portal-prod
+    steps:
+      - name: Deploy to Production
+        uses: docker://alpine:3.19
+        run: |
+          echo "Deploying patient-portal v1.0.${{ cloudbees.run_number }} to PRODUCTION"
+          echo "Target: patient-portal.stryker.com"
+          echo "WARNING: SBOM governance gate has open findings — see security dashboard"
+      - name: Register deployed artifact
+        uses: cloudbees-io/register-deployed-artifact@v2
+        with:
+          name: patient-portal
+          version: 1.0.${{ cloudbees.run_number }}
+          environment-name: patient-portal-prod
+          url: https://github.com/cloudbees-days/stryker-patient-portal
