@@ -87,7 +87,7 @@ jobs:
           artifact-id: ${{ needs.build.outputs.artifact-id }}
           name: patient-portal
           version: 1.0.${{ cloudbees.run_number }}
-          environment-name: stryker-dev
+          target-environment: stryker-dev
           url: https://github.com/shozab-unify-examples/stryker-patient-portal
 
   deploy-staging:
@@ -105,7 +105,7 @@ jobs:
           artifact-id: ${{ needs.build.outputs.artifact-id }}
           name: patient-portal
           version: 1.0.${{ cloudbees.run_number }}
-          environment-name: stryker-staging
+          target-environment: stryker-staging
           url: https://github.com/shozab-unify-examples/stryker-patient-portal
 
   deploy-prod:
@@ -124,5 +124,5 @@ jobs:
           artifact-id: ${{ needs.build.outputs.artifact-id }}
           name: patient-portal
           version: 1.0.${{ cloudbees.run_number }}
-          environment-name: stryker-prod
+          target-environment: stryker-prod
           url: https://github.com/shozab-unify-examples/stryker-patient-portal
