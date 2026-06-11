@@ -44,6 +44,8 @@ jobs:
     needs:
       - sast-scan
       - sca-scan
+    outputs:
+      artifact-id: ${{ steps.register-artifact.outputs.artifact-id }}
     steps:
       - name: Checkout
         uses: cloudbees-io/checkout@v1
@@ -53,6 +55,7 @@ jobs:
           npm ci --prefer-offline || npm install
           echo "Build complete — patient-portal v1.0.${{ cloudbees.run_number }}"
       - name: Register build artifact
+        id: register-artifact
         uses: cloudbees-io/register-build-artifact@v2
         with:
           name: patient-portal
@@ -78,36 +81,28 @@ jobs:
         run: |
           echo "Deploying patient-portal v1.0.${{ cloudbees.run_number }} to DEV"
           echo "Target: patient-portal-dev.stryker-internal.io"
-          echo "Platform: non-OSEP | Business Unit: Digital Health"
       - name: Register deployed artifact
         uses: cloudbees-io/register-deployed-artifact@v2
         with:
+          artifact-id: ${{ needs.build.outputs.artifact-id }}
           name: patient-portal
           version: 1.0.${{ cloudbees.run_number }}
           environment-name: patient-portal-dev
           url: https://github.com/shozab-unify-examples/stryker-patient-portal
-      - name: Publish deploy evidence
-        uses: cloudbees-io/publish-evidence-item@v1
-        with:
-          content: |
-            ## Deployed to DEV
-            - **Environment**: patient-portal-dev
-            - **Version**: 1.0.${{ cloudbees.run_number }}
-            - **Status**: SUCCESS
-          format: MARKDOWN
 
   deploy-staging:
     needs:
+      - build
       - deploy-dev
     steps:
       - name: Deploy to Staging
         uses: docker://alpine:3.19
         run: |
           echo "Deploying patient-portal v1.0.${{ cloudbees.run_number }} to STAGING"
-          echo "Target: patient-portal-staging.stryker-internal.io"
       - name: Register deployed artifact
         uses: cloudbees-io/register-deployed-artifact@v2
         with:
+          artifact-id: ${{ needs.build.outputs.artifact-id }}
           name: patient-portal
           version: 1.0.${{ cloudbees.run_number }}
           environment-name: patient-portal-staging
@@ -115,6 +110,7 @@ jobs:
 
   deploy-prod:
     needs:
+      - build
       - deploy-staging
     steps:
       - name: Deploy to Production
@@ -122,10 +118,10 @@ jobs:
         run: |
           echo "Deploying patient-portal v1.0.${{ cloudbees.run_number }} to PRODUCTION"
           echo "Target: patient-portal.stryker.com"
-          echo "WARNING: SBOM governance gate has open findings — see security dashboard"
       - name: Register deployed artifact
         uses: cloudbees-io/register-deployed-artifact@v2
         with:
+          artifact-id: ${{ needs.build.outputs.artifact-id }}
           name: patient-portal
           version: 1.0.${{ cloudbees.run_number }}
           environment-name: patient-portal-prod
